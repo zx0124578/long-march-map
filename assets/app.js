@@ -40,6 +40,23 @@
     ]
   };
 
+  /* 各事件默认配图 */
+  var DEFAULT_IMGS = {
+    e01: "assets/e01_ruijin_2240x1680.jpg",
+    e02: "assets/e02_yudu_2240x1680.jpg",
+    e03: "assets/e03_xiangjiang_2240x1680.jpg",
+    e04: "assets/e04_zunyi_2240x1680.jpg",
+    e05: "assets/e05_chishui_2240x1680.jpg",
+    e06: "assets/e06_jinsha_2240x1680.jpg",
+    e07: "assets/e07_luding_2240x1680.jpg",
+    e08: "assets/e08_jiajin_2240x1680.jpg",
+    e09: "assets/e09_caodi_2240x1680.jpg",
+    e10: "assets/e10_lazikou_2240x1680.jpg",
+    e11: "assets/e11_huining_2240x1680.jpg",
+    e12: "assets/e12_wuqi_2240x1680.jpg"
+  };
+  DEFAULT_DATA.events.forEach(function (e) { if (!e.img && DEFAULT_IMGS[e.id]) e.img = DEFAULT_IMGS[e.id]; });
+
   /* 少量省份名称标注（经纬度大致位置，仅作地理参考） */
   var GEO_LABELS = [
     ["黑龙江", 127.6, 47.6], ["吉林", 126.4, 43.6], ["辽宁", 122.6, 41.2],
@@ -59,7 +76,11 @@
       var raw = localStorage.getItem(LS_KEY);
       if (raw) {
         var d = JSON.parse(raw);
-        if (d && Array.isArray(d.events)) return d;
+        if (d && Array.isArray(d.events)) {
+          /* 旧数据自动补默认配图 */
+          d.events.forEach(function (e) { if (!e.img && DEFAULT_IMGS[e.id]) e.img = DEFAULT_IMGS[e.id]; });
+          return d;
+        }
       }
     } catch (e) {}
     return JSON.parse(JSON.stringify(DEFAULT_DATA));
@@ -237,11 +258,13 @@
   function renderAll() { drawMap(); drawLabels(); drawRoute(); drawStars(); }
 
   /* ---------------- 详情面板 ---------------- */
-  var sheet, sheetBody, sheetTitle, sheetDate;
+  var sheet, sheetBody, sheetTitle, sheetDate, sheetImg;
   function openSheet(ev) {
     sheetTitle.textContent = ev.name;
     sheetDate.textContent = ev.date || "";
     sheetBody.textContent = ev.desc || "";
+    if (ev.img) { sheetImg.src = ev.img; sheetImg.style.display = "block"; }
+    else { sheetImg.style.display = "none"; sheetImg.removeAttribute("src"); }
     sheet.classList.add("open");
     document.getElementById("btnSheetEdit").onclick = function () {
       closeSheet(); openEditor(ev);
@@ -254,7 +277,12 @@
   }
 
   /* ---------------- 编辑表单 ---------------- */
-  var editor, fId, fName, fDate, fLon, fLat, fOrder, fMajor, fDesc, btnDelete;
+  var editor, fId, fName, fDate, fLon, fLat, fOrder, fMajor, fDesc, fImg, fImgFile, fImgPrev, btnDelete;
+  function updateImgPrev() {
+    var v = fImg.value.trim();
+    if (v) { fImgPrev.src = v; fImgPrev.style.display = "block"; }
+    else { fImgPrev.style.display = "none"; fImgPrev.removeAttribute("src"); }
+  }
   function openEditor(ev, isNew) {
     fId.value = ev.id;
     fName.value = ev.name || "";
@@ -264,6 +292,9 @@
     fOrder.value = ev.order != null ? ev.order : data.events.length + 1;
     fMajor.checked = !!ev.major;
     fDesc.value = ev.desc || "";
+    fImg.value = ev.img || "";
+    fImgFile.value = "";
+    updateImgPrev();
     btnDelete.style.display = isNew ? "none" : "";
     editor.dataset.isNew = isNew ? "1" : "";
     editor.classList.add("open");
@@ -282,6 +313,7 @@
       lat: parseFloat(fLat.value) || 0,
       order: parseInt(fOrder.value, 10) || data.events.length + 1,
       major: fMajor.checked,
+      img: fImg.value.trim(),
       desc: fDesc.value.trim()
     };
     var existing = findEvent(ev.id);
@@ -435,11 +467,14 @@
     sheetTitle = document.getElementById("sheetTitle");
     sheetDate = document.getElementById("sheetDate");
     sheetBody = document.getElementById("sheetBody");
+    sheetImg = document.getElementById("sheetImg");
     editor = document.getElementById("editor");
     fId = document.getElementById("fId"); fName = document.getElementById("fName");
     fDate = document.getElementById("fDate"); fLon = document.getElementById("fLon");
     fLat = document.getElementById("fLat"); fOrder = document.getElementById("fOrder");
     fMajor = document.getElementById("fMajor"); fDesc = document.getElementById("fDesc");
+    fImg = document.getElementById("fImg"); fImgFile = document.getElementById("fImgFile");
+    fImgPrev = document.getElementById("fImgPrev");
     btnDelete = document.getElementById("btnDelete");
     ioModal = document.getElementById("ioModal"); ioText = document.getElementById("ioText");
 
@@ -463,6 +498,28 @@
         saveData(); drawRoute(); drawStars(); closeEditor();
       }
     };
+    fImg.addEventListener("change", updateImgPrev);
+    fImgFile.addEventListener("change", function () {
+      var file = fImgFile.files && fImgFile.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var max = 1000;
+          var sc = Math.min(1, max / Math.max(img.width, img.height));
+          var cv = document.createElement("canvas");
+          cv.width = Math.round(img.width * sc);
+          cv.height = Math.round(img.height * sc);
+          cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+          fImg.value = cv.toDataURL("image/jpeg", 0.72);
+          updateImgPrev();
+          toast("照片已加入，记得点“保存”");
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
     document.getElementById("btnEdit").onclick = function () {
       editMode = !editMode;
       document.body.classList.toggle("editing", editMode);
