@@ -179,10 +179,12 @@
   @media (min-width: 768px) {
     #sheet { left: auto; right: 20px; bottom: 20px; width: 400px; border-radius: 14px; border: 1px solid var(--rule); border-top: 3px solid var(--accent); }
   }
-  #sheet::before {
-    content: ""; display: block; width: 40px; height: 4px; border-radius: 2px;
-    background: var(--rule); margin: 0 auto 10px;
+  #sheetImg {
+    display: block; width: calc(100% + 36px); margin: -14px -18px 12px -18px;
+    height: 210px; object-fit: cover; border-radius: 15px 15px 0 0;
   }
+  #sheet::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px;
+    background: var(--rule); margin: 0 auto 10px; }
   #sheetTitle { font-family: var(--font-serif); font-size: 1.25rem; color: var(--accent); font-weight: 700; }
   #sheetDate { font-family: 'CrimsonPro', var(--font-ui); font-size: 0.85rem; color: var(--muted); margin: 3px 0 8px; letter-spacing: 0.03em; }
   #sheetBody { font-size: 0.92rem; line-height: 1.8; }
@@ -291,6 +293,7 @@
 
 <!-- 事件详情 -->
 <div id="sheet" role="dialog" aria-modal="true">
+  <img id="sheetImg" alt="" style="display:none">
   <h2 id="sheetTitle"></h2>
   <div id="sheetDate"></div>
   <p id="sheetBody"></p>
@@ -312,6 +315,12 @@
       <div class="f-item"><label>经度</label><input id="fLon" type="number" step="0.01" inputmode="decimal"></div>
       <div class="f-item"><label>纬度</label><input id="fLat" type="number" step="0.01" inputmode="decimal"></div>
       <div class="f-item f-check"><input type="checkbox" id="fMajor"><label for="fMajor">重要节点（大五角星）</label></div>
+      <div class="f-item full"><label>图片链接（可留空）</label><input id="fImg" placeholder="assets/xxx.jpg 或任意图片网址"></div>
+      <div class="f-item full">
+        <label>或从相册上传照片（自动压缩保存）</label>
+        <input id="fImgFile" type="file" accept="image/*" style="font-size:0.8rem;">
+        <img id="fImgPrev" alt="" style="display:none;max-height:120px;border-radius:8px;border:1px solid var(--rule);margin-top:6px;">
+      </div>
       <div class="f-item full"><label>历史介绍</label><textarea id="fDesc" placeholder="这段历史事件的介绍…"></textarea></div>
     </div>
     <div class="m-btns">
