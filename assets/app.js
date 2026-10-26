@@ -57,6 +57,23 @@
   };
   DEFAULT_DATA.events.forEach(function (e) { if (!e.img && DEFAULT_IMGS[e.id]) e.img = DEFAULT_IMGS[e.id]; });
 
+  /* 各事件默认视频（B 站战争/历史纪录片片段） */
+  var DEFAULT_VIDS = {
+    e01: "https://www.bilibili.com/video/BV14EJ164EYU",
+    e02: "https://www.bilibili.com/video/BV1smtu6gEog",
+    e03: "https://www.bilibili.com/video/BV1jVWc6oEeX",
+    e04: "https://www.bilibili.com/video/BV1XcJR6fESg",
+    e05: "https://www.bilibili.com/video/BV1aj411x7cE",
+    e06: "https://www.bilibili.com/video/BV1Eeb567Ex1",
+    e07: "https://www.bilibili.com/video/BV1yFWA6VEVq",
+    e08: "https://www.bilibili.com/video/BV1uZTW6TEpj",
+    e09: "https://www.bilibili.com/video/BV1SG4y1a7Nw",
+    e10: "https://www.bilibili.com/video/BV19sJH6PEGB",
+    e11: "https://www.bilibili.com/video/BV1yfJa6DEbM",
+    e12: "https://www.bilibili.com/video/BV1rg4y1f7Vo"
+  };
+  DEFAULT_DATA.events.forEach(function (e) { if (e.video == null && DEFAULT_VIDS[e.id]) e.video = DEFAULT_VIDS[e.id]; });
+
   /* 少量省份名称标注（经纬度大致位置，仅作地理参考） */
   var GEO_LABELS = [
     ["黑龙江", 127.6, 47.6], ["吉林", 126.4, 43.6], ["辽宁", 122.6, 41.2],
@@ -77,8 +94,11 @@
       if (raw) {
         var d = JSON.parse(raw);
         if (d && Array.isArray(d.events)) {
-          /* 旧数据自动补默认配图 */
-          d.events.forEach(function (e) { if (!e.img && DEFAULT_IMGS[e.id]) e.img = DEFAULT_IMGS[e.id]; });
+          /* 旧数据自动补默认配图与视频 */
+          d.events.forEach(function (e) {
+            if (!e.img && DEFAULT_IMGS[e.id]) e.img = DEFAULT_IMGS[e.id];
+            if (e.video == null && DEFAULT_VIDS[e.id]) e.video = DEFAULT_VIDS[e.id];
+          });
           return d;
         }
       }
@@ -330,12 +350,10 @@
       });
       return;
     }
-    if (/^https?:\/\//.test(v) || v.indexOf("data:video") === 0) {
-      sheetVideo.style.display = "block";
-      var vid2 = document.createElement("video");
-      vid2.src = v; vid2.controls = true; vid2.playsInline = true; vid2.preload = "metadata";
-      sheetVideo.appendChild(vid2);
-    }
+    sheetVideo.style.display = "block";
+    var vid2 = document.createElement("video");
+    vid2.src = v; vid2.controls = true; vid2.playsInline = true; vid2.preload = "metadata";
+    sheetVideo.appendChild(vid2);
   }
   function openSheet(ev) {
     sheetTitle.textContent = ev.name;
