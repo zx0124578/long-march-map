@@ -91,6 +91,46 @@
   var data = loadData();
   var editMode = false;
 
+  /* ---------------- 本地视频库（IndexedDB） ---------------- */
+  var idbPromise = null;
+  function idb() {
+    if (!idbPromise) idbPromise = new Promise(function (res, rej) {
+      var rq = indexedDB.open("lmm-db", 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore("videos"); };
+      rq.onsuccess = function () { res(rq.result); };
+      rq.onerror = function () { rej(rq.error); };
+    });
+    return idbPromise;
+  }
+  function idbPut(key, blob) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction("videos", "readwrite");
+        tx.objectStore("videos").put(blob, key);
+        tx.oncomplete = function () { res(); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function idbGet(key) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var rq = db.transaction("videos").objectStore("videos").get(key);
+        rq.onsuccess = function () { res(rq.result || null); };
+        rq.onerror = function () { rej(rq.error); };
+      });
+    });
+  }
+  function idbDel(key) {
+    return idb().then(function (db) {
+      return new Promise(function (res) {
+        var tx = db.transaction("videos", "readwrite");
+        tx.objectStore("videos")["delete"](key);
+        tx.oncomplete = res; tx.onerror = res;
+      });
+    });
+  }
+
   /* ---------------- 投影（墨卡托） ---------------- */
   var LON_MIN = 71, LON_MAX = 136, LAT_MIN = 17, LAT_MAX = 54.8, PAD = 26;
   function mercX(lon) { return lon * Math.PI / 180; }
@@ -258,26 +298,65 @@
   function renderAll() { drawMap(); drawLabels(); drawRoute(); drawStars(); }
 
   /* ---------------- 详情面板 ---------------- */
-  var sheet, sheetBody, sheetTitle, sheetDate, sheetImg;
+  var sheet, sheetBody, sheetTitle, sheetDate, sheetImg, sheetVideo, curVideoUrl = null;
+  function clearSheetVideo() {
+    if (curVideoUrl) { try { URL.revokeObjectURL(curVideoUrl); } catch (e) {} curVideoUrl = null; }
+    sheetVideo.innerHTML = "";
+    sheetVideo.style.display = "none";
+  }
+  function renderSheetVideo(v) {
+    clearSheetVideo();
+    if (!v) return;
+    var bv = v.match(/BV[0-9A-Za-z]+/);
+    if (bv && /bilibili\.com/.test(v)) {
+      sheetVideo.style.display = "block";
+      var ifr = document.createElement("iframe");
+      ifr.src = "https://player.bilibili.com/player.html?bvid=" + bv[0] + "&autoplay=0&danmaku=0";
+      ifr.setAttribute("allowfullscreen", "");
+      ifr.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation allow-popups");
+      ifr.scrolling = "no"; ifr.frameBorder = "0";
+      sheetVideo.appendChild(ifr);
+      return;
+    }
+    if (v.indexOf("idb:") === 0) {
+      idbGet(v.slice(4)).then(function (blob) {
+        if (!blob) { sheetVideo.style.display = "block"; sheetVideo.innerHTML = '<div class="vid-missing">视频保存在另一台设备上，本机未找到</div>'; return; }
+        curVideoUrl = URL.createObjectURL(blob);
+        sheetVideo.style.display = "block";
+        sheetVideo.innerHTML = "";
+        var vid = document.createElement("video");
+        vid.src = curVideoUrl; vid.controls = true; vid.playsInline = true; vid.preload = "metadata";
+        sheetVideo.appendChild(vid);
+      });
+      return;
+    }
+    if (/^https?:\/\//.test(v) || v.indexOf("data:video") === 0) {
+      sheetVideo.style.display = "block";
+      var vid2 = document.createElement("video");
+      vid2.src = v; vid2.controls = true; vid2.playsInline = true; vid2.preload = "metadata";
+      sheetVideo.appendChild(vid2);
+    }
+  }
   function openSheet(ev) {
     sheetTitle.textContent = ev.name;
     sheetDate.textContent = ev.date || "";
     sheetBody.textContent = ev.desc || "";
     if (ev.img) { sheetImg.src = ev.img; sheetImg.style.display = "block"; }
     else { sheetImg.style.display = "none"; sheetImg.removeAttribute("src"); }
+    renderSheetVideo(ev.video);
     sheet.classList.add("open");
     document.getElementById("btnSheetEdit").onclick = function () {
       closeSheet(); openEditor(ev);
     };
   }
-  function closeSheet() { sheet.classList.remove("open"); }
+  function closeSheet() { sheet.classList.remove("open"); clearSheetVideo(); }
   function findEvent(id) {
     for (var i = 0; i < data.events.length; i++) if (data.events[i].id === id) return data.events[i];
     return null;
   }
 
   /* ---------------- 编辑表单 ---------------- */
-  var editor, fId, fName, fDate, fLon, fLat, fOrder, fMajor, fDesc, fImg, fImgFile, fImgPrev, btnDelete;
+  var editor, fId, fName, fDate, fLon, fLat, fOrder, fMajor, fDesc, fImg, fImgFile, fImgPrev, fVid, fVidFile, fVidHint, btnDelete;
   function updateImgPrev() {
     var v = fImg.value.trim();
     if (v) { fImgPrev.src = v; fImgPrev.style.display = "block"; }
@@ -294,6 +373,9 @@
     fDesc.value = ev.desc || "";
     fImg.value = ev.img || "";
     fImgFile.value = "";
+    fVid.value = ev.video || "";
+    fVidFile.value = "";
+    fVidHint.textContent = "";
     updateImgPrev();
     btnDelete.style.display = isNew ? "none" : "";
     editor.dataset.isNew = isNew ? "1" : "";
@@ -314,10 +396,12 @@
       order: parseInt(fOrder.value, 10) || data.events.length + 1,
       major: fMajor.checked,
       img: fImg.value.trim(),
+      video: fVid.value.trim(),
       desc: fDesc.value.trim()
     };
     var existing = findEvent(ev.id);
     if (existing && !editor.dataset.isNew) {
+      if (existing.video && existing.video.indexOf("idb:") === 0 && existing.video !== ev.video) idbDel(existing.video.slice(4));
       for (var k in ev) existing[k] = ev[k];
     } else {
       data.events.push(ev);
@@ -468,6 +552,7 @@
     sheetDate = document.getElementById("sheetDate");
     sheetBody = document.getElementById("sheetBody");
     sheetImg = document.getElementById("sheetImg");
+    sheetVideo = document.getElementById("sheetVideo");
     editor = document.getElementById("editor");
     fId = document.getElementById("fId"); fName = document.getElementById("fName");
     fDate = document.getElementById("fDate"); fLon = document.getElementById("fLon");
@@ -475,6 +560,8 @@
     fMajor = document.getElementById("fMajor"); fDesc = document.getElementById("fDesc");
     fImg = document.getElementById("fImg"); fImgFile = document.getElementById("fImgFile");
     fImgPrev = document.getElementById("fImgPrev");
+    fVid = document.getElementById("fVid"); fVidFile = document.getElementById("fVidFile");
+    fVidHint = document.getElementById("fVidHint");
     btnDelete = document.getElementById("btnDelete");
     ioModal = document.getElementById("ioModal"); ioText = document.getElementById("ioText");
 
@@ -494,11 +581,26 @@
     btnDelete.onclick = function () {
       var ev = findEvent(fId.value);
       if (ev && confirm("确定删除「" + ev.name + "」吗？")) {
+        if (ev.video && ev.video.indexOf("idb:") === 0) idbDel(ev.video.slice(4));
         data.events = data.events.filter(function (x) { return x.id !== ev.id; });
         saveData(); drawRoute(); drawStars(); closeEditor();
       }
     };
     fImg.addEventListener("change", updateImgPrev);
+    fVidFile.addEventListener("change", function () {
+      var file = fVidFile.files && fVidFile.files[0];
+      if (!file) return;
+      if (file.size > 300 * 1024 * 1024) { toast("视频超过 300MB，请换短一些的"); fVidFile.value = ""; return; }
+      fVidHint.textContent = "正在保存视频…（" + Math.round(file.size / 1024 / 1024) + "MB）";
+      var key = "v" + Date.now();
+      idbPut(key, file).then(function () {
+        fVid.value = "idb:" + key;
+        fVidHint.textContent = "视频已加入（约 " + Math.round(file.size / 1024 / 1024) + "MB），记得点“保存”";
+        toast("视频已加入，记得点“保存”");
+      }).catch(function () {
+        fVidHint.textContent = "保存失败，设备存储空间可能不足";
+      });
+    });
     fImgFile.addEventListener("change", function () {
       var file = fImgFile.files && fImgFile.files[0];
       if (!file) return;
